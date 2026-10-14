@@ -4,7 +4,7 @@ import random
 import string
 import unicodedata
 from datetime import date, timedelta
-from documentos import formatar_cpf, gerar_cpf
+from documentos import estragar_documento, formatar_cpf, gerar_cpf
 
 NOMES_MASCULINOS = [
     "Miguel", "Arthur", "Heitor", "Davi", "Gabriel", "Bernardo", "Samuel",
@@ -124,19 +124,42 @@ def gerar_id(n):
         raise ValueError("n deve ser 1 ou maior")
     return f"teste-{n:04d}"
 
-def gerar_pessoa(i, cenario="completo", faixa="adulto"):
+CAMPOS_OPCIONAIS = ["nome", "cpf", "data_nascimento", "email"]
+CAMPOS_COM_FORMATO = ["cpf", "data_nascimento", "email"]
+MODOS_AUSENTE = ("vazio", "nulo", "omitido")
+CENARIOS = ("completo", "ausentes", "invalidos")
+DATAS_INVALIDAS = ["2000-02-30", "2000-13-01", "31/12/2000", "0000-00-00", "ontem"]
+
+
+def _cpf_invalido():
+    """CPF inválido: ou com dígito verificador errado (mantendo a máscara),
+    ou com formato quebrado (tamanho ou máscara)."""
+    if random.random() < 0.5:
+        return formatar_cpf(estragar_documento("cpf", "dv"))
+    return estragar_documento("cpf", "formato")
+
+
+def gerar_pessoa(i, cenario="completo", faixa="adulto", modo_ausente="vazio"):
     """Monta o registro de uma pessoa fictícia (um dicionário).
 
     i: posição da pessoa no lote (1, 2, 3...), usada no ID.
-    cenario: por enquanto só "completo" (todos os campos válidos).
-             Os cenários "ausentes" e "invalidos" entram no item 15.
+    cenario:
+      "completo"  -> todos os campos válidos.
+      "ausentes"  -> de 1 a 3 campos (entre nome, cpf, data_nascimento, email)
+                     ficam ausentes, conforme modo_ausente.
+      "invalidos" -> de 1 a 3 campos (entre cpf, data_nascimento, email)
+                     ficam com formato inválido.
     faixa: "adulto" ou "menor", repassado para gerar_data_nascimento.
+    modo_ausente: "vazio" ("")  |  "nulo" (None/null)  |  "omitido" (sem a chave).
+    id e ambiente nunca ficam ausentes nem inválidos.
     """
-    if cenario != "completo":
-        raise ValueError(f"cenário inválido (por enquanto): {cenario}")
+    if cenario not in CENARIOS:
+        raise ValueError(f"cenário inválido: {cenario}")
+    if modo_ausente not in MODOS_AUSENTE:
+        raise ValueError(f"modo_ausente inválido: {modo_ausente}")
 
     nome = gerar_nome()
-    return {
+    pessoa = {
         "id": gerar_id(i),
         "ambiente": "teste",
         "nome": nome,
@@ -144,3 +167,23 @@ def gerar_pessoa(i, cenario="completo", faixa="adulto"):
         "data_nascimento": gerar_data_nascimento(faixa).isoformat(),
         "email": gerar_email(True, nome),
     }
+
+    if cenario == "ausentes":
+        for campo in random.sample(CAMPOS_OPCIONAIS, random.randint(1, 3)):
+            if modo_ausente == "vazio":
+                pessoa[campo] = ""
+            elif modo_ausente == "nulo":
+                pessoa[campo] = None
+            else:
+                del pessoa[campo]
+
+    elif cenario == "invalidos":
+        for campo in random.sample(CAMPOS_COM_FORMATO, random.randint(1, 3)):
+            if campo == "cpf":
+                pessoa[campo] = _cpf_invalido()
+            elif campo == "data_nascimento":
+                pessoa[campo] = random.choice(DATAS_INVALIDAS)
+            else:
+                pessoa[campo] = gerar_email(False, nome)
+
+    return pessoa
